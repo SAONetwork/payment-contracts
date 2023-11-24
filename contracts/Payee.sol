@@ -14,7 +14,6 @@ contract Payee is Ownable {
     string public payeeId;
     AggregatorV3Interface internal dataFeed;
 
-    uint256 public paymentId = 0;
 
     // SCT = 1e6 usct 
     uint256 public SC = 1000;
@@ -22,7 +21,8 @@ contract Payee is Ownable {
     uint256  public confirmedFund;
 
     struct Payment{
-        uint256 id;
+        address sender;
+        string dataId;
         string cid;
         uint80 roundId;
         uint256 amountA;
@@ -32,11 +32,11 @@ contract Payee is Ownable {
         uint status; // 1: pending, 2: paid
     }
 
-    mapping(uint256 => Payment) public getPayment;
+    mapping(string => Payment) public getPayment;
 
-    event PaymentCreated(uint256 indexed paymentId ,string cid,uint256 amount, uint256 expiredAt);
+    event PaymentCreated(string dataId,string cid,uint256 amount, uint256 expiredAt);
 
-    event PaymentConfirmed(uint256 indexed paymentId);
+    event PaymentConfirmed(string dataId);
 
     event Withdraw(address token, uint256 amount);
 
@@ -46,13 +46,15 @@ contract Payee is Ownable {
 
     /*
      * _cid: cid of the payment proposal 
-     * _sao: amount need payee pay to network
+     * _sao: amount aht the payee need to pay to network
      * _timeout: time to refund 
      *
      */
-    function createPayment(string memory _cid, uint256 _sao, uint256 _timeout) external payable {
+    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout) external payable {
 
-        paymentId += 1;
+        Payment memory p = getPayment[_dataId];
+
+        require(p.roundId == 0, "dataId already exists");
 
         uint256 amountA = msg.value;
 
@@ -60,11 +62,13 @@ contract Payee is Ownable {
 
         uint256 amountB = _sao * uint256(1e15) / uint256(price);
 
-        require(msg.value == amountA, "invalid payment amount");
+        // verify payment amount with latest round price feed
+        require(msg.value == amountB, "invalid payment amount");
 
         Payment memory payment;
-        payment.id =  paymentId;
+        payment.dataId=  _dataId;
         payment.cid = _cid;
+        payment.sender = tx.origin;
         payment.amountA = amountA;
         payment.roundId = roundId;
         payment.amountB = amountB;
@@ -72,27 +76,38 @@ contract Payee is Ownable {
         payment.expiredAt = block.timestamp + _timeout;
         payment.status = 1;
 
-        getPayment[paymentId] = payment;
+        getPayment[_dataId] = payment;
 
-        emit PaymentCreated(paymentId, _cid, amountB, payment.expiredAt);
+        emit PaymentCreated(_dataId, _cid, amountB, payment.expiredAt);
     }
 
-    function confirmPayment(uint256 _paymentId) external onlyOwner {
+    function confirmPayment(string memory _dataId) external onlyOwner {
         
-        Payment memory payment = getPayment[_paymentId];
+        Payment memory payment = getPayment[_dataId];
 
-        require(payment.id == 1, "PAYMENT NOT IN PENDING");
+        require(payment.status == 1, "PAYMENT NOT IN PENDING");
 
         payment.status = 2;
 
-        getPayment[_paymentId] = payment;
+        getPayment[_dataId] = payment;
 
         confirmedFund += payment.amountA;
 
-        emit PaymentConfirmed(payment.id);
+        emit PaymentConfirmed(payment.dataId);
     }
 
     function withdraw() external onlyOwner {
+        require(confirmedFund> 0, "NO AVAILABLE CONFIRMED FUND");
+        require(address(this).balance >= confirmedFund, "INSUFFICIENT ETH BALANCE");
+
+        Address.sendValue(payable(msg.sender), confirmedFund);
+
+        confirmedFund = 0;
+
+        emit Withdraw(msg.sender,confirmedFund);
+    }
+
+    function refund() external onlyOwner {
         require(confirmedFund> 0, "NO AVAILABLE CONFIRMED FUND");
         require(address(this).balance > confirmedFund, "INSUFFICIENT ETH BALANCE");
 
