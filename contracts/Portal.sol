@@ -8,6 +8,7 @@ contract Portal {
 
 
     mapping(address => address) public getPayee;
+    mapping(address => uint) public createdAt;
 
     event PayeeCreated(address indexed owner, address indexed payee);
 
@@ -52,6 +53,7 @@ contract Portal {
         console.log(payee);
 
         getPayee[msg.sender] = payee;
+        createdAt[payee] = block.number;
 
         emit PayeeCreated(msg.sender, payee);
     }
