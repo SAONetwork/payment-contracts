@@ -40,7 +40,7 @@ contract Payee is Ownable {
 
     event Withdraw(address token, uint256 amount);
 
-    constructor(feed address) Ownable(tx.origin) {
+    constructor(address feed) Ownable(tx.origin) {
         dataFeed = AggregatorV3Interface(feed);
     }
 
@@ -58,7 +58,7 @@ contract Payee is Ownable {
 
         (int price, uint80 roundId) = _getPrice();
 
-        uint256 amountB = _sao * 1e15 / price 
+        uint256 amountB = _sao * uint256(1e15) / uint256(price);
 
         require(msg.value == amountA, "invalid payment amount");
 
@@ -100,7 +100,7 @@ contract Payee is Ownable {
 
         confirmedFund = 0;
 
-        emit Withdraw(token, confirmedFund);
+        emit Withdraw(msg.sender,confirmedFund);
     }
 
     function _getPrice() internal view returns (int, uint80) {
