@@ -50,20 +50,20 @@ contract Payee is Ownable {
      * _timeout: time to refund 
      *
      */
-    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout) external payable {
+    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token) external payable {
 
         Payment memory p = getPayment[_dataId];
 
         require(p.roundId == 0, "dataId already exists");
 
-        uint256 amountA = msg.value;
+        uint256 amountA = _token;
 
         (int price, uint80 roundId) = _getPrice();
 
         uint256 amountB = _sao * uint256(1e15) / uint256(price);
 
         // verify payment amount with latest round price feed
-        require(msg.value == amountB, "invalid payment amount");
+        require(amountA == amountB, "invalid payment amount");
 
         Payment memory payment;
         payment.dataId=  _dataId;
