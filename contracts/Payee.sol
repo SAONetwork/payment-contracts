@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-contract Payee is Ownable {
+contract PayeeV1 is Ownable {
 
     using Address for address;
 
@@ -54,7 +54,7 @@ contract Payee is Ownable {
 
         Payment memory p = getPayment[_dataId];
 
-        require(p.roundId == 0, "dataId already exists");
+        require(p.roundId == 0, "DATAID ALREADY EXISTS");
 
         uint256 amountA = msg.value;
 
@@ -63,7 +63,7 @@ contract Payee is Ownable {
         uint256 amountB = _sao * uint256(1e15) / uint256(price);
 
         // verify payment amount with latest round price feed
-        require(msg.value == amountB, "invalid payment amount");
+        require(amountA >= amountB, "INVALID PAYMENT AMOUNT");
 
         Payment memory payment;
         payment.dataId=  _dataId;
@@ -107,13 +107,21 @@ contract Payee is Ownable {
         emit Withdraw(msg.sender,confirmedFund);
     }
 
-    function refund() external onlyOwner {
-        require(confirmedFund> 0, "NO AVAILABLE CONFIRMED FUND");
-        require(address(this).balance > confirmedFund, "INSUFFICIENT ETH BALANCE");
+    function refund( string memory _dataId) external {
 
-        Address.sendValue(payable(msg.sender), confirmedFund);
+        Payment memory payment = getPayment[_dataId];
 
-        confirmedFund = 0;
+        require(payment.roundId > 0, "INVALID PAYMENT");
+        require(msg.sender == payment.sender, "NOT THE DATA OWNER");
+        require(payment.status == 1, "PAYMENT NOT IN PENDING STATUS");
+        require(address(this).balance >= payment.amountA, "INSUFFICIENT ETH BALANCE");
+        require(block.timestamp > payment.expiredAt, "NOT EXPIRED");
+
+        Address.sendValue(payable(msg.sender), payment.amountA);
+
+        payment.status = 3;
+
+        getPayment[_dataId] = payment;
 
         emit Withdraw(msg.sender,confirmedFund);
     }
