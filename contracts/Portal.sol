@@ -57,7 +57,7 @@ contract Portal is CCIPReceiver{
     }
 
 
-    function createPayee() external returns(address) {
+    function createPayee(address feed, address router) external returns(address) {
 
         require(getPayee[msg.sender] == address(0), "PAYEE EXISTS");
 
@@ -68,7 +68,7 @@ contract Portal is CCIPReceiver{
 //        assembly {
 //            payee := create2(0, add(bytecode, 32), mload(bytecode), salt)
 //        }
-        Payee payee = new Payee{salt:salt}(address(0x694AA1769357215DE4FAC081bf1f309aDC325306));
+        Payee payee = new Payee{salt:salt}(address(0x694AA1769357215DE4FAC081bf1f309aDC325306), router);
 
 //        console.log(payee);
 
