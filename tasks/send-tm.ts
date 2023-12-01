@@ -1,8 +1,8 @@
 import { task } from "hardhat/config";
 import { TaskArguments } from "hardhat/types";
 import { getPrivateKey, getProviderRpcUrl, getRouterConfig } from "./utils";
-import { Wallet, providers } from "ethers";
-import { IRouterClient, IRouterClient__factory, PaymentEntrance, PaymentEntrance__factory, Portal, Portal__factory } from "../typechain-types";
+import {Wallet, providers, ethers} from "ethers";
+import { IERC20, IERC20__factory, IRouterClient, IRouterClient__factory, PaymentEntrance, PaymentEntrance__factory, Portal, Portal__factory } from "../typechain-types";
 import { Spinner } from "../utils/spinner";
 
 task(`send-tm`, `Sends token and data using ProgrammableTokenTransfers.sol`)
@@ -24,7 +24,7 @@ task(`send-tm`, `Sends token and data using ProgrammableTokenTransfers.sol`)
         const sourceProvider = new providers.JsonRpcProvider(sourceRpcProviderUrl);
         const wallet = new Wallet(privateKey);
         const signer = wallet.connect(sourceProvider);
-
+        const tokenContract: IERC20 = IERC20__factory.connect(tokenAddress,signer);
         const senderContract: PaymentEntrance = PaymentEntrance__factory.connect(sender, signer);
 
         const routerAddress = taskArguments.router ? taskArguments.router : getRouterConfig(sourceBlockchain).address;
@@ -42,6 +42,7 @@ task(`send-tm`, `Sends token and data using ProgrammableTokenTransfers.sol`)
         console.log(`ℹ️  Attempting to call the sendMessage function of ProgrammableTokenTransfers smart contract on the ${sourceBlockchain} blockchain using ${signer.address} address`);
         spinner.start();
 
+        await tokenContract.approve(sender,tokenAmount)
         const message: PaymentEntrance.DataStruct = {
                 payee: "0x28Feee805791932240741A6324cbAcea89Ce1846",
                 cid: "QmRLr57t5ZjJ2FGWkTcSsQMWwkjCLttDAmj7XYyvB3cVnw",
@@ -50,16 +51,17 @@ task(`send-tm`, `Sends token and data using ProgrammableTokenTransfers.sol`)
                 saoAmount: saoAmount,
                 tokenAmount: tokenAmount
         }
-
+        console.log("estimateGas")
         const tx = await senderContract.sendMessage(
             destinationChainSelector,
             receiver,
             message,
-            tokenAddress
+            tokenAddress,
+            {gasLimit: 5000000, gasPrice: ethers.utils.parseUnits('9.0', 'gwei')}
         );
 
         await tx.wait();
-
+        console.log(tx)
         spinner.start();
         console.log(`✅ Message sent, transaction hash: ${tx.hash}`);
     })

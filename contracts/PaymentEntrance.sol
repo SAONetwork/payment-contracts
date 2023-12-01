@@ -83,9 +83,9 @@ contract PaymentEntrance is OwnerIsCreator {
         // Initialize a router client instance to interact with cross-chain router
         IRouterClient router = IRouterClient(i_router);
 
-
-        IERC20(token).approve(msg.sender, data.tokenAmount);
-        IERC20(token).transferFrom(msg.sender,address(this), data.tokenAmount);
+        IERC20(token).approve(msg.sender,data.tokenAmount);
+        // approve the Router to spend tokens on contract's behalf. I will spend the amount of the given token
+        IERC20(token).transferFrom(msg.sender, address(this), data.tokenAmount);
 
         // Get the fee required to send the message
         uint256 fees = router.getFee(destinationChainSelector, evm2AnyMessage);
