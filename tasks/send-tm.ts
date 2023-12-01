@@ -56,8 +56,7 @@ task(`send-tm`, `Sends token and data using ProgrammableTokenTransfers.sol`)
             destinationChainSelector,
             receiver,
             message,
-            tokenAddress,
-            {gasLimit: 5000000, gasPrice: ethers.utils.parseUnits('9.0', 'gwei')}
+            tokenAddress
         );
 
         await tx.wait();

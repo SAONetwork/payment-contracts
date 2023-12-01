@@ -39,12 +39,6 @@ contract Portal is CCIPReceiver{
         uint64 latestSourceChainSelector = message.sourceChainSelector;
         address latestSender = abi.decode(message.sender, (address));
         Data memory latestMessage = abi.decode(message.data, (Data));
-        emit MessageReceived(
-            latestMessageId,
-            latestSourceChainSelector,
-            latestSender,
-            latestMessage
-        );
         Payee payee = Payee(latestMessage.payee);
 
         payee.createPayment(latestMessage.cid, latestMessage.dataId, latestMessage.saoAmount, latestMessage.timeout, latestMessage.tokenAmount);
