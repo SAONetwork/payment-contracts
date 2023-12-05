@@ -28,9 +28,10 @@ task(`deploy-payee`, `Deploys the Payee smart contract`)
         console.log(`ℹ️  Attempting to deploy Payee on the ${hre.network.name} blockchain using ${deployer.address} address, with the Router address ${routerAddress} provided as constructor argument, by Portal contract ${portalContract.address}`);
         spinner.start();
 
-        const tx = await portalContract.createPayee()
+        const tx = await portalContract.createPayee("0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada", "0x6E2dc0F9DB014aE19888F539E59285D2Ea04244C")
 
+        const payee  = await portalContract.getPayee(wallet.address)
 
         spinner.stop();
-        console.log(`✅ Payee deployed at address ${tx.data} on ${hre.network.name} blockchain`)
+        console.log(`✅ Payee deployed at address ${payee} on ${hre.network.name} blockchain`)
     });

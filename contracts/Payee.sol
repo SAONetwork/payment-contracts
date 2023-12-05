@@ -14,7 +14,6 @@ contract Payee is FunctionsClient, ConfirmedOwner {
     using Address for address;
     using FunctionsRequest for FunctionsRequest.Request;
 
-
     bytes32 public s_lastRequestId;
     bytes public s_lastResponse;
     bytes public s_lastError;
@@ -22,6 +21,8 @@ contract Payee is FunctionsClient, ConfirmedOwner {
     error UnexpectedRequestID(bytes32 requestId);
 
     event Response(bytes32 indexed requestId, bytes response, bytes err);
+
+    mapping(bytes32 => string) public requests;
 
     string public payeeId;
     AggregatorV3Interface internal dataFeed;
@@ -94,21 +95,6 @@ contract Payee is FunctionsClient, ConfirmedOwner {
         emit PaymentCreated(_dataId, _cid, amountB, payment.expiredAt);
     }
 
-    function confirmPayment(string memory _dataId) external onlyOwner {
-        
-        Payment memory payment = getPayment[_dataId];
-
-        require(payment.status == 1, "PAYMENT NOT IN PENDING");
-
-        payment.status = 2;
-
-        getPayment[_dataId] = payment;
-
-        confirmedFund += payment.amountA;
-
-        emit PaymentConfirmed(payment.dataId);
-    }
-
     function withdraw() external onlyOwner {
         require(confirmedFund> 0, "NO AVAILABLE CONFIRMED FUND");
         require(address(this).balance >= confirmedFund, "INSUFFICIENT ETH BALANCE");
@@ -141,42 +127,30 @@ contract Payee is FunctionsClient, ConfirmedOwner {
     /**
      * @notice Send a simple request
      * @param source JavaScript source code
-     * @param encryptedSecretsUrls Encrypted URLs where to fetch user secrets
-     * @param donHostedSecretsSlotID Don hosted secrets slotId
-     * @param donHostedSecretsVersion Don hosted secrets version
      * @param args List of arguments accessible from within the source code
-     * @param bytesArgs Array of bytes arguments, represented as hex strings
      * @param subscriptionId Billing ID
      */
-    function sendRequest(
+    function confirmPayment(
         string memory source,
-        bytes memory encryptedSecretsUrls,
-        uint8 donHostedSecretsSlotID,
-        uint64 donHostedSecretsVersion,
         string[] memory args,
-        bytes[] memory bytesArgs,
         uint64 subscriptionId,
         uint32 gasLimit,
-        bytes32 donID
+        bytes32 donId
     ) external onlyOwner returns (bytes32 requestId) {
+        require(args.length > 0, "NEED DATAID");
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source);
-        if (encryptedSecretsUrls.length > 0)
-            req.addSecretsReference(encryptedSecretsUrls);
-        else if (donHostedSecretsVersion > 0) {
-            req.addDONHostedSecrets(
-                donHostedSecretsSlotID,
-                donHostedSecretsVersion
-            );
-        }
+        Payment memory payment = getPayment[args[0]];
+        require(payment.amountB > 0, "INVALID DATAID");
+        require(payment.status != 1, "PAYMENT NOT IN PENDING");
         if (args.length > 0) req.setArgs(args);
-        if (bytesArgs.length > 0) req.setBytesArgs(bytesArgs);
         s_lastRequestId = _sendRequest(
             req.encodeCBOR(),
             subscriptionId,
             gasLimit,
-            donID
+            donId
         );
+        requests[s_lastRequestId] = args[0];
         return s_lastRequestId;
     }
 
@@ -192,11 +166,20 @@ contract Payee is FunctionsClient, ConfirmedOwner {
         bytes memory response,
         bytes memory err
     ) internal override {
-        if (s_lastRequestId != requestId) {
+        if (bytes(requests[requestId]).length == 0) {
             revert UnexpectedRequestID(requestId);
         }
         s_lastResponse = response;
         s_lastError = err;
+        string memory dataId = requests[requestId];
+        Payment memory payment = getPayment[dataId];
+        payment.status = uint256(bytes32(response));
+        getPayment[dataId] = payment;
+
+        if (payment.status == 4 ) {
+           confirmedFund += payment.amountA;
+           emit PaymentConfirmed(payment.dataId);
+        }
         emit Response(requestId, s_lastResponse, s_lastError);
     }
 }
