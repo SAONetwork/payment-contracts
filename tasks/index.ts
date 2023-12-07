@@ -12,7 +12,8 @@
 // import './fill-sender';
 // import './cross-chain-nft-minter';
 import './deploy-portal'
-import './deploy-payment-entrance'
+import './deploy-payeex'
 import './send-tm'
 import './deploy-payee'
+import './deploy-erc20'
 import './requests'

@@ -25,6 +25,16 @@ contract Payee is FunctionsClient, ConfirmedOwner {
     mapping(bytes32 => string) public requests;
 
     string public payeeId;
+
+    address public portal;
+
+
+    modifier onlyPortal() {
+        require(msg.sender == portal, "ONLY PORTAL");
+        _;
+    }
+
+
     AggregatorV3Interface internal dataFeed;
 
 
@@ -53,10 +63,19 @@ contract Payee is FunctionsClient, ConfirmedOwner {
 
     event Withdraw(address token, uint256 amount);
 
-    constructor(address feed, address router)  FunctionsClient(router) ConfirmedOwner(tx.origin) {
+    constructor(address feed, address router, address _portal)  FunctionsClient(router) ConfirmedOwner(tx.origin)  {
         dataFeed = AggregatorV3Interface(feed);
+        portal = _portal;
     }
 
+
+    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout) external payable {
+        _createPaymentFor(msg.sender, _cid, _dataId, _sao, _timeout, msg.value, true);
+    }
+
+    function createPaymentX(address owner, string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token, bool checkFund) onlyPortal external {
+        _createPaymentFor(owner, _cid, _dataId, _sao, _timeout, _token, checkFund);
+    }
 
     /*
      * _cid: cid of the payment proposal 
@@ -64,11 +83,11 @@ contract Payee is FunctionsClient, ConfirmedOwner {
      * _timeout: time to refund 
      *
      */
-    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token) external payable {
+    function _createPaymentFor(address owner, string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token, bool checkFund) internal {
 
         Payment memory p = getPayment[_dataId];
 
-        require(p.roundId == 0, "dataId already exists");
+        require(p.roundId == 0, "DATAID ALREADY EXISTS");
 
         uint256 amountA = _token;
 
@@ -77,12 +96,13 @@ contract Payee is FunctionsClient, ConfirmedOwner {
         uint256 amountB = _sao * uint256(1e15) / uint256(price);
 
         // verify payment amount with latest round price feed
-        require(amountA == amountB, "invalid payment amount");
+        if(checkFund)
+            require(amountA >= amountB, "INVALID PAYMENT AMOUNT");
 
         Payment memory payment;
         payment.dataId=  _dataId;
         payment.cid = _cid;
-        payment.sender = tx.origin;
+        payment.sender = owner;
         payment.amountA = amountA;
         payment.roundId = roundId;
         payment.amountB = amountB;
@@ -106,13 +126,21 @@ contract Payee is FunctionsClient, ConfirmedOwner {
         emit Withdraw(msg.sender,confirmedFund);
     }
 
-    function refund() external onlyOwner {
-        require(confirmedFund> 0, "NO AVAILABLE CONFIRMED FUND");
-        require(address(this).balance > confirmedFund, "INSUFFICIENT ETH BALANCE");
+    function refund( string memory _dataId) external {
 
-        Address.sendValue(payable(msg.sender), confirmedFund);
+        Payment memory payment = getPayment[_dataId];
 
-        confirmedFund = 0;
+        require(payment.roundId > 0, "INVALID PAYMENT");
+        require(msg.sender == payment.sender, "NOT THE DATA OWNER");
+        require(payment.status == 1, "PAYMENT NOT IN PENDING STATUS");
+        require(address(this).balance >= payment.amountA, "INSUFFICIENT ETH BALANCE");
+        require(block.timestamp > payment.expiredAt, "NOT EXPIRED");
+
+        Address.sendValue(payable(msg.sender), payment.amountA);
+
+        payment.status = 3;
+
+        getPayment[_dataId] = payment;
 
         emit Withdraw(msg.sender,confirmedFund);
     }
@@ -182,4 +210,5 @@ contract Payee is FunctionsClient, ConfirmedOwner {
         }
         emit Response(requestId, s_lastResponse, s_lastError);
     }
+
 }

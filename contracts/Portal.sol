@@ -2,17 +2,13 @@
 pragma solidity ^0.8.9;
 
 import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
+import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 
 import "./Payee.sol";
 import "hardhat/console.sol";
 
-contract Portal is CCIPReceiver{
-
-    mapping(address => address) public getPayee;
-    mapping(address => uint) public createdAt;
-
-    event PayeeCreated(address indexed owner, address indexed payee);
+contract Portal is CCIPReceiver, ConfirmedOwner {
 
     event MessageReceived(
         bytes32 latestMessageId,
@@ -21,7 +17,10 @@ contract Portal is CCIPReceiver{
         Data latestMessage
     );
 
+    bool public checkFund;
+
     struct Data{
+        address owner;
         address payee;
         string cid;
         string dataId;
@@ -30,7 +29,12 @@ contract Portal is CCIPReceiver{
         uint256 tokenAmount;
     }
 
-    constructor(address router) CCIPReceiver(router) {}
+
+    constructor(address router) CCIPReceiver(router) ConfirmedOwner(tx.origin){}
+
+    function setCheckFund(bool _checkFund) onlyOwner external {
+        checkFund = _checkFund;
+    }
 
     function _ccipReceive(
         Client.Any2EVMMessage memory message
@@ -38,44 +42,20 @@ contract Portal is CCIPReceiver{
         bytes32 latestMessageId = message.messageId;
         uint64 latestSourceChainSelector = message.sourceChainSelector;
         address latestSender = abi.decode(message.sender, (address));
+
         Data memory latestMessage = abi.decode(message.data, (Data));
+
         emit MessageReceived(
             latestMessageId,
             latestSourceChainSelector,
             latestSender,
             latestMessage
         );
+
         Payee payee = Payee(latestMessage.payee);
 
-        payee.createPayment(latestMessage.cid, latestMessage.dataId, latestMessage.saoAmount, latestMessage.timeout, latestMessage.tokenAmount);
-        emit MessageReceived(
-            latestMessageId,
-            latestSourceChainSelector,
-            latestSender,
-            latestMessage
-        );
+        payee.createPaymentX(latestMessage.owner, latestMessage.cid, latestMessage.dataId, latestMessage.saoAmount, latestMessage.timeout, latestMessage.tokenAmount, checkFund);
+
     }
 
-
-    function createPayee(address feed, address router) external returns(address) {
-
-        require(getPayee[msg.sender] == address(0), "PAYEE EXISTS");
-
-//        bytes memory bytecode = type(Payee).creationCode;
-
-        bytes32 salt = keccak256(abi.encodePacked(msg.sender));
-
-//        assembly {
-//            payee := create2(0, add(bytecode, 32), mload(bytecode), salt)
-//        }
-        Payee payee = new Payee{salt:salt}(address(0x694AA1769357215DE4FAC081bf1f309aDC325306), router);
-
-//        console.log(payee);
-
-        getPayee[msg.sender] = address(payee);
-        createdAt[address(payee)] = block.number;
-
-        emit PayeeCreated(msg.sender, address(payee));
-        return address(payee);
-    }
 }

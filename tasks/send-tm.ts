@@ -1,65 +1,37 @@
 import { task } from "hardhat/config";
-import { TaskArguments } from "hardhat/types";
+import { HardhatRuntimeEnvironment, TaskArguments } from "hardhat/types";
 import { getPrivateKey, getProviderRpcUrl, getRouterConfig } from "./utils";
-import { Wallet, providers } from "ethers";
-import { IRouterClient, IRouterClient__factory, PaymentEntrance, PaymentEntrance__factory, Portal, Portal__factory } from "../typechain-types";
+import {Wallet, providers, ethers} from "ethers";
+import { IERC20, IERC20__factory, IRouterClient, IRouterClient__factory, PayeeX, PayeeX__factory, Portal, Portal__factory } from "../typechain-types";
 import { Spinner } from "../utils/spinner";
 
-task(`send-tm`, `Sends token and data using ProgrammableTokenTransfers.sol`)
-    .addParam(`sourceBlockchain`, `The name of the source blockchain (for example ethereumSepolia)`)
+task(`send-tm`, `send cross-chain create payemnt`)
     .addParam(`sender`, `The address of the sender ProgrammableTokenTransfers.sol on the source blockchain`)
-    .addParam(`destinationBlockchain`, `The name of the destination blockchain (for example polygonMumbai)`)
-    .addParam(`receiver`, `The address of the receiver ProgrammableTokenTransfers.sol on the destination blockchain`)
-    // .addParam(`message`, `The string message to be sent (for example "Hello, World")`)
-    .addParam(`tokenAddress`, `The address of a token to be sent on the source blockchain`)
-    .addParam(`saoAmount`, `The amount of sao to be paid`)
-    .addParam(`tokenAmount`, `The amount of token to be sent`)
-    .addOptionalParam("router", `The address of the Router contract on the source blockchain`)
-    .setAction(async (taskArguments: TaskArguments) => {
-        const { sourceBlockchain, sender, destinationBlockchain, receiver,  tokenAddress, saoAmount, tokenAmount } = taskArguments;
+    .addParam(`token`, `The address of a token to be sent on the source blockchain`)
+    .addParam(`sao`, `The amount of sao to be paid`)
+    .addParam(`amount`, `The amount of token to be sent`)
+    .setAction(async (taskArguments: TaskArguments, hre: HardhatRuntimeEnvironment) => {
+        const { sender, receiver,  token, sao, amount} = taskArguments;
 
         const privateKey = getPrivateKey();
-        const sourceRpcProviderUrl = getProviderRpcUrl(sourceBlockchain);
+        const sourceRpcProviderUrl = getProviderRpcUrl(hre.network.name);
 
         const sourceProvider = new providers.JsonRpcProvider(sourceRpcProviderUrl);
         const wallet = new Wallet(privateKey);
         const signer = wallet.connect(sourceProvider);
-
-        const senderContract: PaymentEntrance = PaymentEntrance__factory.connect(sender, signer);
-
-        const routerAddress = taskArguments.router ? taskArguments.router : getRouterConfig(sourceBlockchain).address;
-        const destinationChainSelector = getRouterConfig(destinationBlockchain).chainSelector;
-
-        const router: IRouterClient = IRouterClient__factory.connect(routerAddress, signer);
-        const supportedTokens = await router.getSupportedTokens(destinationChainSelector);
-
-        if (!supportedTokens.includes(tokenAddress)) {
-            throw Error(`Token address ${tokenAddress} not in the list of supportedTokens ${supportedTokens}`);
-        }
+        const tokenContract: IERC20 = IERC20__factory.connect(token,signer);
+        const senderContract: PayeeX = PayeeX__factory.connect(sender, signer);
 
         const spinner: Spinner = new Spinner();
 
-        console.log(`ℹ️  Attempting to call the sendMessage function of ProgrammableTokenTransfers smart contract on the ${sourceBlockchain} blockchain using ${signer.address} address`);
+        console.log(`ℹ️  Attempting to call the sendMessage function of ProgrammableTokenTransfers smart contract on the ${hre.network.name} blockchain using ${signer.address} address`);
         spinner.start();
 
-        const message: PaymentEntrance.DataStruct = {
-                payee: "0x28Feee805791932240741A6324cbAcea89Ce1846",
-                cid: "QmRLr57t5ZjJ2FGWkTcSsQMWwkjCLttDAmj7XYyvB3cVnw",
-                dataId: "e46cf170-8eaf-11ee-aef2-03ab57ca4caa",
-                timeout: 30000,
-                saoAmount: saoAmount,
-                tokenAmount: tokenAmount
-        }
-
-        const tx = await senderContract.sendMessage(
-            destinationChainSelector,
-            receiver,
-            message,
-            tokenAddress
-        );
+        await tokenContract.approve(sender,amount)
+        console.log("estimateGas")
+        const tx = await senderContract.createPayment( "QmRLr57t5ZjJ2FGWkTcSsQMWwkjCLttDAmj7XYyvB3cVnw", "e46cf170-8eaf-11ee-aef2-03ab57ca4caa", sao, 30000, amount, {gasLimit: 1000000});
 
         await tx.wait();
-
         spinner.start();
         console.log(`✅ Message sent, transaction hash: ${tx.hash}`);
     })
