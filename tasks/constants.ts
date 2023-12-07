@@ -22,7 +22,8 @@ export const LINK_ADDRESSES: AddressMap = {
     [`polygonMumbai`]: `0x326C977E6efc84E512bB9C30f76E30c160eD06FB`,
     [`optimismGoerli`]: `0xdc2CC710e42857672E7907CF474a69B63B93089f`,
     [`arbitrumTestnet`]: `0xd14838A68E8AFBAdE5efb411d5871ea0011AFd28`,
-    [`avalancheFuji`]: `0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846`
+    [`avalancheFuji`]: `0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846`,
+    [`bnbTestnet`]: `0x84b9B910527Ad5C03A9Ca831909E21e236EA7b06`
 };
 
 export const CCIP_BnM_ADDRESSES: AddressMap = {
@@ -66,5 +67,10 @@ export const routerConfig = {
         address: `0x70499c328e1e2a3c41108bd3730f6670a44595d1`,
         chainSelector: `12532609583862916517`,
         feeTokens: [LINK_ADDRESSES[`polygonMumbai`], `0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889`]
+    },
+    bnbTestnet: {
+        address: `0x9527e2d01a3064ef6b50c1da1c0cc523803bcff2`,
+        chainSelector: `13264668187771770619`,
+        feeTokens: [LINK_ADDRESSES[`bnbTestnet`], `0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd`]
     }
 }

@@ -1,17 +1,40 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.19;
 
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
+import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
+import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
 
-contract Payee is Ownable {
+contract Payee is FunctionsClient, ConfirmedOwner {
 
     using Address for address;
+    using FunctionsRequest for FunctionsRequest.Request;
+
+    bytes32 public s_lastRequestId;
+    bytes public s_lastResponse;
+    bytes public s_lastError;
+
+    error UnexpectedRequestID(bytes32 requestId);
+
+    event Response(bytes32 indexed requestId, bytes response, bytes err);
+
+    mapping(bytes32 => string) public requests;
 
     string public payeeId;
+
+    address public portal;
+
+
+    modifier onlyPortal() {
+        require(msg.sender == portal, "ONLY PORTAL");
+        _;
+    }
+
+
     AggregatorV3Interface internal dataFeed;
 
 
@@ -40,8 +63,18 @@ contract Payee is Ownable {
 
     event Withdraw(address token, uint256 amount);
 
-    constructor(address feed) Ownable(tx.origin) {
+    constructor(address feed, address router, address _portal)  FunctionsClient(router) ConfirmedOwner(tx.origin)  {
         dataFeed = AggregatorV3Interface(feed);
+        portal = _portal;
+    }
+
+
+    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout) external payable {
+        _createPaymentFor(msg.sender, _cid, _dataId, _sao, _timeout, msg.value, true);
+    }
+
+    function createPaymentX(address owner, string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token, bool checkFund) onlyPortal external {
+        _createPaymentFor(owner, _cid, _dataId, _sao, _timeout, _token, checkFund);
     }
 
     /*
@@ -50,7 +83,7 @@ contract Payee is Ownable {
      * _timeout: time to refund 
      *
      */
-    function createPayment(string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token) external payable {
+    function _createPaymentFor(address owner, string memory _cid, string memory _dataId, uint256 _sao, uint256 _timeout, uint256 _token, bool checkFund) internal {
 
         Payment memory p = getPayment[_dataId];
 
@@ -63,12 +96,13 @@ contract Payee is Ownable {
         uint256 amountB = _sao * uint256(1e15) / uint256(price);
 
         // verify payment amount with latest round price feed
-        require(amountA >= amountB, "INVALID PAYMENT AMOUNT");
+        if(checkFund)
+            require(amountA >= amountB, "INVALID PAYMENT AMOUNT");
 
         Payment memory payment;
         payment.dataId=  _dataId;
         payment.cid = _cid;
-        payment.sender = tx.origin;
+        payment.sender = owner;
         payment.amountA = amountA;
         payment.roundId = roundId;
         payment.amountB = amountB;
@@ -79,21 +113,6 @@ contract Payee is Ownable {
         getPayment[_dataId] = payment;
 
         emit PaymentCreated(_dataId, _cid, amountB, payment.expiredAt);
-    }
-
-    function confirmPayment(string memory _dataId) external onlyOwner {
-        
-        Payment memory payment = getPayment[_dataId];
-
-        require(payment.status == 1, "PAYMENT NOT IN PENDING");
-
-        payment.status = 2;
-
-        getPayment[_dataId] = payment;
-
-        confirmedFund += payment.amountA;
-
-        emit PaymentConfirmed(payment.dataId);
     }
 
     function withdraw() external onlyOwner {
@@ -130,4 +149,66 @@ contract Payee is Ownable {
         (uint80 roundID, int answer,,,) = dataFeed.latestRoundData();
         return (answer, roundID);
     }
+
+    /*=============== Chainlink Functions =============== */
+    
+    /**
+     * @notice Send a simple request
+     * @param source JavaScript source code
+     * @param args List of arguments accessible from within the source code
+     * @param subscriptionId Billing ID
+     */
+    function confirmPayment(
+        string memory source,
+        string[] memory args,
+        uint64 subscriptionId,
+        uint32 gasLimit,
+        bytes32 donId
+    ) external onlyOwner returns (bytes32 requestId) {
+        require(args.length > 0, "NEED DATAID");
+        FunctionsRequest.Request memory req;
+        req.initializeRequestForInlineJavaScript(source);
+        Payment memory payment = getPayment[args[0]];
+        require(payment.amountB > 0, "INVALID DATAID");
+        require(payment.status != 1, "PAYMENT NOT IN PENDING");
+        if (args.length > 0) req.setArgs(args);
+        s_lastRequestId = _sendRequest(
+            req.encodeCBOR(),
+            subscriptionId,
+            gasLimit,
+            donId
+        );
+        requests[s_lastRequestId] = args[0];
+        return s_lastRequestId;
+    }
+
+    /**
+     * @notice Store latest result/error
+     * @param requestId The request ID, returned by sendRequest()
+     * @param response Aggregated response from the user code
+     * @param err Aggregated error from the user code or from the execution pipeline
+     * Either response or error parameter will be set, but never both
+     */
+    function fulfillRequest(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) internal override {
+        if (bytes(requests[requestId]).length == 0) {
+            revert UnexpectedRequestID(requestId);
+        }
+        s_lastResponse = response;
+        s_lastError = err;
+        string memory dataId = requests[requestId];
+        Payment memory payment = getPayment[dataId];
+        payment.status = uint256(bytes32(response));
+        getPayment[dataId] = payment;
+
+        if (payment.status == 4 ) {
+           confirmedFund += payment.amountA;
+           emit PaymentConfirmed(payment.dataId);
+        }
+        emit Response(requestId, s_lastResponse, s_lastError);
+    }
+
 }

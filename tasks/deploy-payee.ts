@@ -8,7 +8,8 @@ import {
 } from "../typechain-types";
 import { Spinner } from "../utils/spinner";
 
-task(`deploy-payee`, `Deploys the Payee smart contract`)
+/*
+task(`deploy-payee-via-portal`, `Deploys the Payee smart contract`)
     .addOptionalParam(`router`, `The address of the Router contract`)
     .addParam(`portal`, `The address of the contract Portal.sol on the source blockchain`)
     .setAction(async (taskArguments: TaskArguments, hre: HardhatRuntimeEnvironment) => {
@@ -28,13 +29,45 @@ task(`deploy-payee`, `Deploys the Payee smart contract`)
         console.log(`ℹ️  Attempting to deploy Payee on the ${hre.network.name} blockchain using ${deployer.address} address, with the Router address ${routerAddress} provided as constructor argument, by Portal contract ${portalContract.address}`);
         spinner.start();
 
-        const tx = await portalContract.createPayee()
+        const tx = await portalContract.createPayee("0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada", "0x6E2dc0F9DB014aE19888F539E59285D2Ea04244C", {gasLimit: 3000000})
 
-        console.log(tx)
+        await tx.wait()
+
+        const payee = await portalContract.getPayee(wallet.address)
 
         spinner.stop();
-        console.log(`✅ Payee deployed at address ${tx.data} on ${hre.network.name} blockchain`)
+        console.log(`✅ Payee deployed at address ${payee} on ${hre.network.name} blockchain`)
     });
+    */
+
+task(`deploy-payee`, `Deploys the Payee smart contract`)
+    .addOptionalParam(`router`, `The address of the Router contract`)
+    .addParam(`portal`, `The address of the contract Portal.sol on the source blockchain`)
+    .setAction(async (taskArguments: TaskArguments, hre: HardhatRuntimeEnvironment) => {
+        const routerAddress = taskArguments.router ? taskArguments.router : getRouterConfig(hre.network.name).address;
+        const portalAddress = taskArguments.portal ? taskArguments.portal : getRouterConfig(hre.network.name).address;
+
+        const privateKey = getPrivateKey();
+        const rpcProviderUrl = getProviderRpcUrl(hre.network.name);
+
+        const provider = new providers.JsonRpcProvider(rpcProviderUrl);
+        const wallet = new Wallet(privateKey);
+        const deployer = wallet.connect(provider);
+
+        const spinner: Spinner = new Spinner();
+
+        console.log(`ℹ️  Attempting to deploy Payee on the ${hre.network.name} blockchain using ${deployer.address} address, with the Router address ${routerAddress} provided as constructor argument, by Portal contract ${portalAddress}`);
+        spinner.start();
+
+        const payeeFactory: Payee__factory = await hre.ethers.getContractFactory('Payee');
+        const payee: Payee = await payeeFactory.deploy("0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada", routerAddress, portalAddress)
+        await payee.deployed();
+
+
+        spinner.stop();
+        console.log(`✅ Payee deployed at address ${payee.address} on ${hre.network.name} blockchain`)
+    });
+
 task(`create-proposal`, `Deploys the Portal smart contract`)
     .addOptionalParam(`router`, `The address of the Router contract`)
     // .addParam(`portal`, `The address of the contract Portal.sol on the source blockchain`)
