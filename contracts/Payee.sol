@@ -170,7 +170,7 @@ contract Payee is FunctionsClient, ConfirmedOwner {
         req.initializeRequestForInlineJavaScript(source);
         Payment memory payment = getPayment[args[0]];
         require(payment.amountB > 0, "INVALID DATAID");
-        require(payment.status != 1, "PAYMENT NOT IN PENDING");
+        require(payment.status == 1, "PAYMENT NOT IN PENDING");
         if (args.length > 0) req.setArgs(args);
         s_lastRequestId = _sendRequest(
             req.encodeCBOR(),
