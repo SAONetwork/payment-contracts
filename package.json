@@ -5,10 +5,7 @@
     "@nomicfoundation/hardhat-network-helpers": "^1.0.9",
     "@nomicfoundation/hardhat-toolbox": "^2.0.2",
     "@nomiclabs/hardhat-ethers": "^2.2.3",
-<<<<<<< HEAD
     "@nomiclabs/hardhat-etherscan": "^3.1.7",
-=======
->>>>>>> main
     "@typechain/ethers-v5": "^10.2.1",
     "@typechain/hardhat": "^6.1.6",
     "@types/chai": "^4.3.11",
@@ -22,12 +19,9 @@
   },
   "dependencies": {
     "@chainlink/contracts": "^0.8.0",
-<<<<<<< HEAD
     "@chainlink/contracts-ccip": "^0.7.6",
     "@chainlink/env-enc": "^1.0.5",
-=======
     "@nomicfoundation/hardhat-verify": "^2.0.1",
->>>>>>> main
     "@openzeppelin/contracts": "^5.0.0"
   }
 }
